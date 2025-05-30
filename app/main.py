@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.database import engine, Base
-from app.api.v1 import auth, users, tasks
+from app.api.v1 import auth, users, tasks, analytics
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -30,14 +30,22 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
+app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics & Dashboard"])
 
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "Welcome to TaskMaster API",
+        "message": "Welcome to TaskMaster API with Advanced Analytics! 📊",
         "version": settings.VERSION,
+        "features": [
+            "Task Management",
+            "User Authentication", 
+            "Completion Trends Analysis",
+            "Performance Dashboard",
+            "Productivity Insights"
+        ],
         "docs": "/api/docs"
     }
 
