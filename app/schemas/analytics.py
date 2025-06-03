@@ -27,7 +27,6 @@ class CompletionTrends(BaseModel):
     end_date: date
     data_points: List[CompletionTrendPoint]
     
-    # Summary statistics
     total_completed: int
     total_created: int
     average_completion_rate: float
@@ -41,18 +40,16 @@ class ProductivityStats(BaseModel):
     period_start: date
     period_end: date
     
-    # Core metrics
+    
     total_tasks_completed: int
     total_tasks_created: int
     average_completion_rate: float
     current_streak_days: int
     longest_streak_days: int
     
-    # Time insights
     most_productive_day: Optional[str] = None
     most_productive_hour: Optional[int] = None
     
-    # Priority breakdown
     priority_distribution: Dict[str, int]
 
 
@@ -61,17 +58,13 @@ class DashboardData(BaseModel):
     user_id: int
     generated_at: datetime
     
-    # Overview metrics
     overview: Dict[str, Any]
     
-    # Trends data
     weekly_trends: CompletionTrends
     monthly_trends: CompletionTrends
     
-    # Productivity stats
     productivity_stats: ProductivityStats
     
-    # Additional insights
     insights: List[str]
     recommendations: List[str]
 
@@ -100,7 +93,7 @@ class PerformanceOverview(BaseModel):
 
 class HourlyProductivity(BaseModel):
     """Hourly productivity breakdown"""
-    hour: int  # 0-23
+    hour: int  
     tasks_completed: int
     completion_rate: float
 
@@ -108,7 +101,7 @@ class HourlyProductivity(BaseModel):
 class WeeklyProductivity(BaseModel):
     """Weekly productivity breakdown"""
     day_of_week: str
-    day_number: int  # 0=Monday, 6=Sunday
+    day_number: int  
     tasks_completed: int
     completion_rate: float
 
