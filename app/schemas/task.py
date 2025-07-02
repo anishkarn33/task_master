@@ -23,6 +23,7 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     due_date: Optional[datetime] = None
+    estimated_minutes: Optional[int] = None
 
 
 class Task(TaskBase):
