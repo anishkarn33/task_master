@@ -9,6 +9,7 @@ from app.database import Base
 class TaskStatus(str, enum.Enum):
     TODO = "todo"
     IN_PROGRESS = "in_progress"
+    IN_REVIEW = "in_review"
     COMPLETED = "completed"
 
 
@@ -27,6 +28,10 @@ class Task(Base):
     description = Column(Text, nullable=True)
     status = Column(Enum(TaskStatus), default=TaskStatus.TODO)
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     due_date = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -34,11 +39,38 @@ class Task(Base):
     estimated_minutes = Column(Integer, nullable=True)  # Estimated completion time
     actual_minutes = Column(Integer, nullable=True) 
     
+   # Review fields
+    review_notes = Column(Text, nullable=True)
+    review_status = Column(String(50), default="pending")  # pending, approved, rejected
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Board position for drag-and-drop
+    board_position = Column(Integer, default=0)
+    
+    # Relationships
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id], back_populates="assigned_tasks",overlaps="owner")
+    reviewer = relationship("User", foreign_keys=[reviewer_id], back_populates="review_tasks",overlaps="owner,assigned_to")
+    created_by = relationship("User", foreign_keys=[created_by_id], back_populates="created_tasks",overlaps="owner,assigned_to,reviewer")
+
     # Foreign key to user
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     # Relationship with user
-    owner = relationship("User", back_populates="tasks")
+    owner = relationship("User",foreign_keys=[owner_id], back_populates="tasks")
+
+# Task comment
+class TaskComment(Base):
+    __tablename__ = "task_comments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    comment = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    task = relationship("Task")
+    user = relationship("User")
 
 # @event.listens_for(Task.status, 'set')
 # def task_status_changed(target, value, oldvalue, initiator):
