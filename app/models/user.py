@@ -16,6 +16,11 @@ class User(Base):
     is_superuser = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    avatar_url = Column(String(255), nullable=True)
+    role = Column(String(50), default="user")
 
     # Relationship with tasks
-    tasks = relationship("Task", back_populates="owner", cascade="all, delete-orphan")
+    tasks = relationship("Task",foreign_keys="Task.owner_id", back_populates="owner", cascade="all, delete-orphan")
+    assigned_tasks = relationship("Task", foreign_keys="Task.assigned_to_id", back_populates="assigned_to", overlaps="tasks")
+    review_tasks = relationship("Task", foreign_keys="Task.reviewer_id", back_populates="reviewer",overlaps="tasks,assigned_tasks")
+    created_tasks = relationship("Task", foreign_keys="Task.created_by_id", back_populates="created_by",overlaps="tasks,assigned_tasks,review_tasks")
