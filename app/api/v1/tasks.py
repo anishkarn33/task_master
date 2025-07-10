@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
 from datetime import datetime
@@ -10,10 +10,14 @@ from app.schemas.task import (
     TaskCreate, 
     TaskUpdate,
     TaskReview, 
-    TaskComment as TaskCommentSchema, 
+    TaskComment as TaskCommentSchema,
+    TaskCommentCreate,
+    CommentCreateAlternative,
     TaskCommentResponse,
     BoardResponse, 
-    BoardColumn
+    BoardColumn,
+    BoardTaskResponse,
+    TaskStatusUpdate
 )
 from app.models.task import Task as TaskModel, TaskStatus, TaskPriority, TaskComment
 from app.models.user import User as UserModel
@@ -57,7 +61,6 @@ def read_tasks(
     return tasks
 
 
-# ================= FIXED: Board endpoint without response_model =================
 @router.get("/board")  # Removed response_model=BoardResponse
 def get_board_view(
     current_user: UserModel = Depends(get_current_active_user),
@@ -266,6 +269,51 @@ def update_task(
     return task
 
 
+@router.patch("/{task_id}/status")
+def update_task_status(
+    task_id: int,
+    status_data: TaskStatusUpdate = Body(...),
+    current_user: UserModel = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update task status (for drag and drop)"""
+    task = db.query(TaskModel).filter(
+        TaskModel.id == task_id,
+        TaskModel.owner_id == current_user.id
+    ).first()
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Convert string status to enum
+    new_status_str = status_data.status
+    try:
+        new_status = TaskStatus(new_status_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status: {new_status_str}"
+        )
+    
+    old_status = task.status
+    task.status = new_status
+    task.updated_at = datetime.utcnow()
+    
+    # Set completed_at when status changes to completed
+    if new_status == TaskStatus.COMPLETED and old_status != TaskStatus.COMPLETED:
+        task.completed_at = datetime.utcnow()
+    elif new_status != TaskStatus.COMPLETED:
+        task.completed_at = None
+    
+    db.commit()
+    db.refresh(task)
+    
+    return {"message": "Task status updated successfully", "task": task}
+
+
 @router.put("/{task_id}/move")
 def move_task(
     task_id: int,
@@ -368,12 +416,30 @@ def add_comment(
     db_comment = TaskComment(
         task_id=task_id,
         user_id=current_user.id,
-        comment=comment.comment
+        comment=comment.comment,
+        created_at=datetime.utcnow()
     )
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
-    return db_comment
+    
+    # Create response with author information
+    response = TaskCommentResponse(
+        id=db_comment.id,
+        comment=db_comment.comment,
+        created_at=db_comment.created_at,
+        user_id=db_comment.user_id,
+        task_id=db_comment.task_id,
+        author={
+            "id": current_user.id,
+            "username": current_user.username,
+            "full_name": current_user.full_name or current_user.username,
+            "email": current_user.email,
+            "avatar_url": getattr(current_user, 'avatar_url', None)
+        }
+    )
+    
+    return response
 
 
 @router.get("/{task_id}/comments", response_model=List[TaskCommentResponse])
@@ -394,11 +460,107 @@ def get_comments(
             detail="Task not found"
         )
     
+    # Get comments with user information
     comments = db.query(TaskComment).filter(
         TaskComment.task_id == task_id
-    ).order_by(TaskComment.created_at.desc()).all()
+    ).order_by(TaskComment.created_at.asc()).all()
     
-    return comments
+    # Build response with author information
+    response_comments = []
+    for comment in comments:
+        try:
+            user = db.query(UserModel).filter(UserModel.id == comment.user_id).first()
+            author_info = {
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.full_name or user.username,
+                "email": user.email,
+                "avatar_url": getattr(user, 'avatar_url', None)
+            } if user else {
+                "id": comment.user_id,
+                "username": "Unknown User",
+                "full_name": "Unknown User",
+                "email": "",
+                "avatar_url": None
+            }
+            
+            response_comment = TaskCommentResponse(
+                id=comment.id,
+                comment=comment.comment,
+                created_at=comment.created_at,
+                user_id=comment.user_id,
+                task_id=comment.task_id,
+                author=author_info
+            )
+            response_comments.append(response_comment)
+            
+        except Exception as e:
+            print(f"Error processing comment {comment.id}: {e}")
+            # Add comment without author info
+            response_comment = TaskCommentResponse(
+                id=comment.id,
+                comment=comment.comment,
+                created_at=comment.created_at,
+                user_id=comment.user_id,
+                task_id=comment.task_id,
+                author={
+                    "id": comment.user_id,
+                    "username": "Unknown User",
+                    "full_name": "Unknown User",
+                    "email": "",
+                    "avatar_url": None
+                }
+            )
+            response_comments.append(response_comment)
+    
+    return response_comments
+
+
+@router.post("/comments", response_model=TaskCommentResponse)
+def add_comment_alternative(
+    comment_data: CommentCreateAlternative,
+    current_user: UserModel = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Alternative comment endpoint for frontend compatibility"""
+    task = db.query(TaskModel).filter(
+        TaskModel.id == comment_data.task_id,
+        TaskModel.owner_id == current_user.id
+    ).first()
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    db_comment = TaskComment(
+        task_id=comment_data.task_id,
+        user_id=current_user.id,
+        comment=comment_data.content,
+        created_at=datetime.utcnow()
+    )
+    db.add(db_comment)
+    db.commit()
+    db.refresh(db_comment)
+    
+    # Create response with author information
+    response = TaskCommentResponse(
+        id=db_comment.id,
+        comment=db_comment.comment,
+        created_at=db_comment.created_at,
+        user_id=db_comment.user_id,
+        task_id=db_comment.task_id,
+        author={
+            "id": current_user.id,
+            "username": current_user.username,
+            "full_name": current_user.full_name or current_user.username,
+            "email": current_user.email,
+            "avatar_url": getattr(current_user, 'avatar_url', None)
+        }
+    )
+    
+    return response
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
