@@ -2,7 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.database import engine, Base
-from app.api.v1 import auth, users, tasks, analytics
+from app.api.v1 import auth, users, tasks, analytics, ai
+from fastapi.exceptions import HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.requests import Request
+
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -31,6 +35,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics & Dashboard"])
+app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Assistant"])
 
 
 @app.get("/")
@@ -63,4 +68,24 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG
+    )
+
+@app.exception_handler(HTTPException)
+async def llama_http_exception_handler(request: Request, exc: HTTPException):
+    if request.url.path.startswith("/api/v1/ai") and exc.status_code == 503:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "LLaMA Service Unavailable",
+                "message": "Please ensure Ollama is running and the model is downloaded",
+                "troubleshooting": {
+                    "check_ollama": "Run 'ollama list' to see available models",
+                    "start_ollama": "Start Ollama service if not running",
+                    "download_model": "Run 'ollama pull llama2' to download the model"
+                }
+            }
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail, "status_code": exc.status_code}
     )
