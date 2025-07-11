@@ -1,6 +1,18 @@
 version: '3.8'
 
 services:
+  # Add Ollama service
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+
   db:
     image: postgres:15
     restart: always
@@ -31,12 +43,21 @@ services:
       ENVIRONMENT: development
       DEBUG: "True"
       CORS_ORIGINS: '["http://localhost:3000", "http://127.0.0.1:3000"]'
+      OLLAMA_URL: http://ollama:11434  # 👈 CHANGED: Use service name
+      LLAMA_MODEL: llama2
+      AI_ENABLED: true
+      AI_CHAT_ENABLED: true
+      AI_SUGGESTIONS_ENABLED: true
+      AI_AUTO_ASSIGNMENT_ENABLED: true
     depends_on:
       db:
         condition: service_healthy
+      ollama:  # 👈 ADDED: Depend on Ollama service
+        condition: service_started
     volumes:
       - ./app:/app/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   postgres_data:
+  ollama_data:  # 👈 ADDED: Volume for Ollama data
